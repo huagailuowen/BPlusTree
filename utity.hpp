@@ -1,7 +1,7 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
-
+#include <map>
 
 
 
@@ -20,21 +20,19 @@ class BPlusTree {
             next = -1;
             prev = -1;
         }    
-    }data[totdatanum*2/L];
+    };
     class innerTreeNode {
     public:
         int id = 0;
         key_t keys[M+1];
         int children[M+1];
-        int parent;
         bool isLeaf;
         int num;
         innerTreeNode(bool isLeafNode=false) {
             isLeaf = isLeafNode;
-            parent = -1;
             num = 0;
         }
-    }tree[totdatanum*2/M];
+    };
     
     class config{
     public:
@@ -55,7 +53,7 @@ private:
     std::string datafile;
     std::string treefile;
     std::fstream file;
-    
+    std::map<int,int > father;
 public:
     BPlusTree(std::string datafile,std::string treefile,bool isnew=false):datafile(datafile),treefile(treefile){
         if (isnew){
@@ -151,11 +149,13 @@ public:
         getconfig(Config);
         innerTreeNode nw;
         gettreefile(nw,Config.root);
+        father[nw.id]=-1;
         while (!nw.isLeaf) {
             int i = 0;
             while (i < nw.num-1 && key > nw.keys[i]) {
                 i++;
             }
+            father[nw.children[i]]=nw.id;
             gettreefile(nw,nw.children[i]);
         }
         int i = 0;
@@ -226,35 +226,119 @@ public:
             }
             innerTreeNode newnw(nw.isLeaf);
             newnw.id=++Config.treecnt;
+            for(int i=((M+1)>>1);i<nw.num;i++){
+                newnw.keys[i-((M+1)>>1)]=nw.keys[i];
+                newnw.children[i-((M+1)>>1)]=nw.children[i];
+                newnw.num++;
+            }
+            nw.num=(M+1)>>1;
+
+
             //可加入内存回收策略
-            innerTreeNode parent;
-            if(nw.parent==-1){
+            innerTreeNode parent(false);
+            if(father[nw]==-1){
                 parent.id=++Config.treecnt;
+                Config.root=parent.id;
                 //可加入内存回收策略
                 parent.num=1;
-                parent.keys[0]=splitkey;
                 parent.children[0]=nw.id;
-                parent.children[1]=newnw.id;
-                newnw.parent=nw.parent=parent.id;
-                Config.root=parent.id;
-                settreefile(nw,nw.id);
-                settreefile(newnw,newnw.id);
-                break;
+                father[parent]=-1;
+            }else{
+                gettreefile(parent,father[nw]);
             }
-
+            settreefile(nw,nw.id);
+            settreefile(newnw,newnw.id);
+            nw=parent;
             childid=newnw.id;
-            splitkey=nw.keys[nw.num-2];
+            splitkey=nw.keys[((M+1)>>1)-1];
         }
-
-
-
-
         setconfig(Config);
     }
 
     // 删除关键字
     void remove(const key_t &key) {
         
+        config Config;
+        getconfig(Config);
+        innerTreeNode nw;
+        gettreefile(nw,Config.root);
+        father[nw.id]=-1;
+        while (!nw.isLeaf) {
+            int i = 0;
+            while (i < nw.num-1 && key > nw.keys[i]) {
+                i++;
+            }
+            father[nw.children[i]]=nw.id;
+            gettreefile(nw,nw.children[i]);
+        }
+        int i = 0;
+        while (i < nw.num-1 && key > nw.keys[i]) {
+            i++;
+        }
+        dataNode datanw;
+        getdatafile(datanw,nw.children[i]);
+        
+        
+        int j = 0;
+        while (j < datanw.num && key > datanw.keys[j]) {
+            j++;
+        }
+        if(j>=datanw.num||key!=datanw.keys[j]){
+            return;
+        }
+        for(int k=datanw.num-2;k>=j;k--){
+            datanw.keys[k]=datanw.keys[k+1];
+            datanw.values[k]=datanw.values[k+1];
+        }
+        datanw.num--;
+        if(datanw.num>=(L>>1)){
+            setdatafile(datanw,datanw.id);
+            return;
+        }
+        //借用节点
+        int place;
+        for(place=0;place<nw.num&&nw.children[place]!=datanw.id;place++);
+        if(place>0){
+            dataNode prevdatanw;
+            getdatafile(prevdatanw,datanw.prev);
+            if(prevdatanw.num>(L>>1)){
+                for(int i=datanw.num;i>0;i--){
+                    datanw.keys[i]=datanw.keys[i-1];
+                    datanw.values[i]=datanw.values[i-1];
+                }
+                datanw.keys[0]=prevdatanw.keys[prevdatanw.num-1];
+                datanw.values[0]=prevdatanw.values[prevdatanw.num-1];
+                datanw.num++;
+                prevdatanw.num--;
+                setdatafile(datanw,datanw.id);
+                setdatafile(prevdatanw,prevdatanw.id);
+                nw.keys[place-1]=prevdatanw.keys[prevdatanw.num-1];
+                settreefile(nw,nw.id);
+                return;
+            }
+        }
+        if(place<nw.num-1){
+            dataNode nextdatanw;
+            getdatafile(nextdatanw,datanw.next);
+            if(nextdatanw.num>(L>>1)){
+                datanw.keys[datanw.num]=nextdatanw.keys[0];
+                datanw.values[datanw.num]=nextdatanw.values[0];
+                datanw.num++;
+                nextdatanw.num--;
+                for(int i=0;i<nextdatanw.num;i++){
+                    nextdatanw.keys[i]=nextdatanw.keys[i+1];
+                    nextdatanw.values[i]=nextdatanw.values[i+1];
+                }
+                setdatafile(datanw,datanw.id);
+                setdatafile(nextdatanw,nextdatanw.id);
+                nw.keys[place]=datanw.keys[datanw.num-1];
+                settreefile(nw,nw.id);
+                return;
+            }
+        }
+        //合并
+        
+
     }
 
     // 查找关键字
