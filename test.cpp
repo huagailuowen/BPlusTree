@@ -2,8 +2,9 @@
 #include <cstdlib>
 #include <iostream>
 
-#include "utity.hpp"
+#include "./src/BPlusTree.hpp"
 using namespace std;
+
 BPlusTree<int, int,4, 4>A("datafile","treefile",true);
 map<int,int>mp;
 
@@ -21,7 +22,8 @@ bool pd()
 int main()
 {
     bool flag=1;
-    // srand(time(0));
+    A.printconfig();
+//    srand(time(0));
     // A.file.open(A.treefile, std::ios::in | std::ios::out);
     // A.file.seekp(0, std::ios::end);
     // std::cerr<<A.file.tellp()<<endl;
@@ -39,31 +41,37 @@ int main()
     // // A.settreefile(it, 0);
 
     // std::cerr<<"-------------------"<<endl;
+    A.print_tree();
     for(int T=1;T<=10000;T++){
         // A.printconfig();
+        std::cerr<<T<<"\n";
         K:
         int tp=rand()%4;
         if(tp==0||tp==3&&flag){
-            if(mp.size()>150){flag=false;goto K;}
+            if(mp.size()>4500){flag=false;goto K;}
             Back:
-            int x=rand()%200;
-            int y=rand()%200;
+            int x=rand()%5000;
+            int y=rand()%5000;
             if(mp.count(x))goto Back;
+            // std::cerr<<T<<"insert\n";
             A.insert(x,y);
             mp[x]=y;
         }
         else if(tp==1||tp==3&&!flag){
-            if(mp.size()<50){flag=true;goto K;}
-            int x=rand()%200;
+            // goto K;
+            if(mp.size()<500){flag=true;goto K;}
+            int x=rand()%5000;
+            // std::cerr<<T<<"remove\n";
             A.remove(x);
             mp.erase(x);
         }
         else{
-            int x=rand()%200;
+            // goto K;
+            int x=rand()%5000;
             auto it=mp.find(x);
             int res=-1;
             A.search(x,res);
-                
+            // std::cerr<<T<<"search\n";
             if(it==mp.end()){
                 assert(res==-1);
             }
@@ -76,16 +84,20 @@ int main()
             }
         }
         if(T%1==0){
-            cout<<T<<':'<<tp<<endl;
+            cerr<<T<<':'<<tp<<' '<<mp.size()<<endl;
         }
         if(!A.checktree()){
+            getchar();
             return 0;
         }
         if(!pd()){
             cout<<"error"<<endl;
             return 0;
         }
-
+        // A.print_buffer();
+        // getchar();
+        // A.print_tree();
+        // std::cerr<<"-------------------"<<endl;
     }    
     return 0;
 }

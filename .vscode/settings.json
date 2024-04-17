@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.mk": "markdown",
+        "iostream": "cpp",
+        "iosfwd": "cpp",
+        "vector": "cpp"
+    }
+}
