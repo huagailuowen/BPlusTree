@@ -1,12 +1,9 @@
 #ifndef BPLUSTREE_HPP
 #define BPLUSTREE_HPP
 #include <cassert>
-#include <condition_variable>
 #include <fstream>
 #include <iostream>
 #include <map>
-#include <mutex>
-#include <pthread.h>
 #include <vector>
 #include <queue>
 #include "utility.hpp"
@@ -84,8 +81,6 @@ public:
         #endif
     };
     
-    
-    
     class config{
     public:
         int root;
@@ -129,20 +124,14 @@ public:
 
     std::map<int,int>treetime;
     std::map<int,int>datatime;
-    //缓存系统
 
     
     
+    //缓存系统
     std::map<int,int > father;
     int time_stamp=0;
-    //并发系统
-    static const int MAXtreeblocknum=10000;
-    static const int MAXdatablocknum=10000;
-    std::mutex treeblockmutex[MAXtreeblocknum];
-    std::mutex datablockmutex[MAXdatablocknum];
-    std::mutex reusemutex;
-    std::condition_variable treeblockcv[MAXtreeblocknum];
-    std::condition_variable datablockcv[MAXdatablocknum];
+
+
     #ifdef DEBUG
     std::map<int,int>test;
     std::map<int,int>testm;
@@ -524,7 +513,6 @@ public:
     }
     // void buffergetconfig
     //
-    
     void buffergetdatafile(dataNode *&node,int pos){
         // std::cerr<<databufferqueue.size()<<"{}"<<pos<<"("<<'\n';
         if(datapos.find(pos)==datapos.end()){
@@ -589,82 +577,18 @@ public:
     //     }
     //     databuffer[buffersize-1]=node;
     // }
-    class innernode_ptr{
-        int id;
-        innerTreeNode *innernode;
-        BPlusTree *tree;
-    public:
-        innernode_ptr(BPlusTree*tree):  tree(tree){}
-        innernode_ptr(int id,BPlusTree*tree):id(id),innernode(nullptr),tree( tree){}
-        innernode_ptr(const innernode_ptr &other):id(other.id),innernode(other.innernode),tree(other.tree){}
-        innernode_ptr& operator =(const innernode_ptr &other){
-            if(this==&other)return *this;
-            id=other.id;
-            innernode=other.innernode;
-            tree=other.tree;
-            return *this;
-        }
-        innernode_ptr& get(int id)
-        {
-            this->id=id;
-            innernode=nullptr;
-            return *this;
-        }
-        innerTreeNode* operator ->()
-        {
-            if(innernode!=nullptr&&innernode->id==id){
-                return innernode;
-            }
-            tree->buffergettreefile(innernode,id);
-            return innernode;
-        }
-    };
-    class datanode_ptr{
-        int id;
-        dataNode *datanode;
-        BPlusTree *tree;
-    public: 
-        datanode_ptr(BPlusTree*tree):  tree(tree){}
-        datanode_ptr(int id,BPlusTree*tree):id(id),datanode(nullptr),tree( tree){}
-        datanode_ptr(const datanode_ptr &other):id(other.id),datanode(other.datanode),tree(other.tree){}
-        datanode_ptr& operator =(const datanode_ptr &other){
-            if(this==&other)return *this;
-            id=other.id;
-            datanode=other.datanode;
-            tree=other.tree;
-            return *this;
-        }
-        datanode_ptr& get(int id)
-        {
-            this->id=id;
-            datanode=nullptr;
-            return *this;
-        }   
-        dataNode* operator ->()
-        {
-            if(datanode!=nullptr&&datanode->id==id){
-                return datanode;
-            }
-            tree->buffergetdatafile(datanode,id);
-            return datanode;
-        }
-    };
-
-
     bool search(const key_t &key, val_t &value) {
         // config Config;
         // getconfig(Config);
-        // innerTreeNode *nw;
-        // buffergettreefile(nw,Config.root);
-        innernode_ptr nw(Config.root,this);
+        innerTreeNode *nw;
+        buffergettreefile(nw,Config.root);
         int depth=0;
         while (!nw->isLeaf) {
             int i = 0;
             while (i < nw->num-1 && key > nw->keys[i]) {
                 i++;
             }
-            nw.get(nw->children[i]);
-            // buffergettreefile(nw,nw->children[i]);
+            buffergettreefile(nw,nw->children[i]);
             depth++;
             
             // if(key==33){
@@ -681,10 +605,8 @@ public:
         }
         depth++;
         // std::cout<<"depth: "<<depth<<std::endl;
-        // dataNode *datanw;
-        // buffergetdatafile(datanw,nw->children[i]);
-        datanode_ptr datanw(nw->children[i],this);
-
+        dataNode *datanw;
+        buffergetdatafile(datanw,nw->children[i]);
         int j = 0;
         while (j < datanw->num && key > datanw->keys[j]) {
             j++;
@@ -701,10 +623,8 @@ public:
         value.clear();
         // config Config;
         // getconfig(Config);
-        // innerTreeNode* nw;
-        // buffergettreefile(nw,Config.root);
-        innernode_ptr nw(Config.root,this);
-
+        innerTreeNode* nw;
+        buffergettreefile(nw,Config.root);
         while (!nw->isLeaf) {
             int i = 0;
             while (i < nw->num-1 && lower_bound > nw->keys[i]) {
@@ -716,9 +636,8 @@ public:
         while (i < nw->num-1 && lower_bound > nw->keys[i]) {
             i++;
         }
-        // dataNode* datanw;
-        // buffergetdatafile(datanw,nw->children[i]);
-        datanode_ptr datanw(nw->children[i],this);
+        dataNode* datanw;
+        buffergetdatafile(datanw,nw->children[i]);
         int j = 0;
         while (j < datanw->num && lower_bound > datanw->keys[j]) {
             j++;
@@ -730,8 +649,7 @@ public:
                 }
                 value.push_back(datanw->values[k]);
             }
-                datanw.get(datanw->next);
-            // buffergetdatafile(datanw,datanw->next);
+            buffergetdatafile(datanw,datanw->next);
             j=0;
         }
 
@@ -746,9 +664,8 @@ public:
     void insert(const key_t &key,const val_t &value) {
         // config Config;
         // getconfig(Config);
-        // innerTreeNode* nw;
-        // buffergettreefile(nw,Config.root);
-        innernode_ptr nw(Config.root,this);
+        innerTreeNode* nw;
+        buffergettreefile(nw,Config.root);
         father[nw->id]=-1;
         // nw->print();
         while (!nw->isLeaf) {
@@ -757,17 +674,16 @@ public:
                 i++;
             }
             father[nw->children[i]]=nw->id;
-            nw.get(nw->children[i]);
-            // buffergettreefile(nw,nw->children[i]);
+            buffergettreefile(nw,nw->children[i]);
         }
         int i = 0;
         while (i < nw->num-1 && key > nw->keys[i]) {
             i++;
         }
         int place=nw->children[i];
-        // dataNode* datanw;
-        // buffergetdatafile(datanw,nw->children[i]);
-        datanode_ptr datanw(nw->children[i],this);
+        dataNode* datanw;
+        buffergetdatafile(datanw,nw->children[i]);
+        
         
         int j = 0;
         while (j < datanw->num && key > datanw->keys[j]) {
@@ -786,16 +702,13 @@ public:
             return;
         }
         // std::cerr<<"{{{{{}}}}}";
-        // dataNode* newdatanw;
-        datanode_ptr    newdatanw(this);
+        dataNode* newdatanw;
         if(Config.vacantdatablock!=-1){
-            // buffergetdatafile(newdatanw,Config.vacantdatablock);
-            newdatanw.get(Config.vacantdatablock);
+            buffergetdatafile(newdatanw,Config.vacantdatablock);
             assert(newdatanw->id==Config.vacantdatablock);
             Config.vacantdatablock=newdatanw->next;
         }else{
-            // buffergetdatafile(newdatanw,++Config.datacnt);
-            newdatanw.get(++Config.datacnt);
+            buffergetdatafile(newdatanw,++Config.datacnt);
             newdatanw->id=Config.datacnt;
         }
         newdatanw->num=0;
@@ -814,9 +727,8 @@ public:
         // buffersetdatafile(datanw,datanw->id);
         // buffersetdatafile(newdatanw,newdatanw->id);
         if(datanw->id!=Config.dataend){
-            // dataNode* nextdatanw;
-            // buffergetdatafile(nextdatanw,newdatanw->next);
-            datanode_ptr nextdatanw(newdatanw->next,this);
+            dataNode* nextdatanw;
+            buffergetdatafile(nextdatanw,newdatanw->next);
             nextdatanw->prev=newdatanw->id;
             // buffersetdatafile(nextdatanw,nextdatanw->id);
         }else{
@@ -845,16 +757,13 @@ public:
                 break;
             }
 
-            //innerTreeNode* newnw;
-            innernode_ptr newnw(this);
+            innerTreeNode* newnw;
             if(Config.vacanttreeblock!=-1){
-                //buffergettreefile(newnw,Config.vacanttreeblock);
-                newnw.get(Config.vacanttreeblock);
+                buffergettreefile(newnw,Config.vacanttreeblock);
                 assert(newnw->id==Config.vacanttreeblock);
                 Config.vacanttreeblock=newnw->next;
             }else{
-                //buffergettreefile(newnw,++Config.treecnt);
-                newnw.get(++Config.treecnt);
+                buffergettreefile(newnw,++Config.treecnt);
                 newnw->id=Config.treecnt;
             }
             newnw->isLeaf=nw->isLeaf;
@@ -870,17 +779,14 @@ public:
             //可加入内存回收策略
             //如果是新建的空间必须先写入，否则文件大小、读写头出问题
             // buffersettreefile(newnw,newnw->id);
-            //innerTreeNode* parent;
-            innernode_ptr parent(this);
+            innerTreeNode* parent;
             if(father[nw->id]==-1){
                 if(Config.vacanttreeblock!=-1){
-                    //buffergettreefile(parent,Config.vacanttreeblock);
-                    parent.get(Config.vacanttreeblock);
+                    buffergettreefile(parent,Config.vacanttreeblock);
                     // assert(parent->id==Config.vacanttreeblock);
                     Config.vacanttreeblock=parent->next;
                 }else{
-                    //buffergettreefile(parent,++Config.treecnt);
-                    parent.get(++Config.treecnt);
+                    buffergettreefile(parent,++Config.treecnt);
                     parent->id=Config.treecnt;
                 }
                 parent->isLeaf=false;
@@ -892,9 +798,7 @@ public:
                 //如果是新建的空间必须先写入，否则文件大小、读写头出问题
                 // buffersettreefile(parent,parent->id);
             }else{
-
-                //buffergettreefile(parent,father[nw->id]);
-                    parent.get( father[nw->id]);
+                buffergettreefile(parent,father[nw->id]);
             }
             // buffersettreefile(nw,nw->id);
             // buffersettreefile(newnw,newnw->id);

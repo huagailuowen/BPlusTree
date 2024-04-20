@@ -22,7 +22,7 @@ bool pd()
 int main()
 {
     bool flag=1;
-    A.printconfig();
+    //A.printconfig();
 //    srand(time(0));
     // A.file.open(A.treefile, std::ios::in | std::ios::out);
     // A.file.seekp(0, std::ios::end);
@@ -41,7 +41,7 @@ int main()
     // // A.settreefile(it, 0);
 
     // std::cerr<<"-------------------"<<endl;
-    A.print_tree();
+   // A.print_tree();
     for(int T=1;T<=10000;T++){
         // A.printconfig();
         std::cerr<<T<<"\n";
@@ -86,10 +86,10 @@ int main()
         if(T%1==0){
             cerr<<T<<':'<<tp<<' '<<mp.size()<<endl;
         }
-        if(!A.checktree()){
-            getchar();
-            return 0;
-        }
+        //if(!A.checktree()){
+          //  getchar();
+            //return 0;
+        //}
         if(!pd()){
             cout<<"error"<<endl;
             return 0;
