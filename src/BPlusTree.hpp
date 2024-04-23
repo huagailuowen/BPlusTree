@@ -6,13 +6,17 @@
 #include <iostream>
 #include <map>
 #include <mutex>
+#include <shared_mutex>
+    
 #include <pthread.h>
+#include <shared_mutex>
 #include <vector>
 #include <queue>
 #include "utility.hpp"
 #include "hashmap.hpp"
 
 // #define DEBUG
+// namespace sjtu  {
 template <class key_t,class val_t,int M,int L>
 class BPlusTree {
 #ifdef DEBUG
@@ -133,14 +137,14 @@ public:
 
     
     
-    std::map<int,int > father;
+    // std::map<int,int > father;
     int time_stamp=0;
     //并发系统
     static const int MAXtreeblocknum=10000;
     static const int MAXdatablocknum=10000;
-    std::mutex treeblockmutex[MAXtreeblocknum];
-    std::mutex datablockmutex[MAXdatablocknum];
-    std::mutex reusemutex;
+    std::shared_mutex treeblockmutex[MAXtreeblocknum];
+    std::shared_mutex datablockmutex[MAXdatablocknum];
+    std::shared_mutex configmutex,iomutex_inner,iomutex_data;
     std::condition_variable treeblockcv[MAXtreeblocknum];
     std::condition_variable datablockcv[MAXdatablocknum];
     #ifdef DEBUG
@@ -229,7 +233,6 @@ public:
                             std::cout<<"error in tree structure"<<std::endl;
                             return false;
                         }else {
-                            flag=true;
                             continue;
                         }
                     }
@@ -267,7 +270,6 @@ public:
             std::cout<<"error in tree structure"<<std::endl;
             return false;
         }
-        return true;
     }
     void print_buffer()
     {
@@ -327,7 +329,7 @@ public:
         }
     }
     #endif
-    BPlusTree(std::string datafile,std::string treefile,bool isnew=false):datafile(datafile),treefile(treefile){
+     BPlusTree(std::string datafile,std::string treefile,bool isnew=false):datafile(datafile),treefile(treefile){
         time_stamp=0;
         treepos.clear();
         datapos.clear();
@@ -416,7 +418,7 @@ public:
                     innerTreeNode tmp;
                     file.write(reinterpret_cast<char *>(&tmp), blocksize);
                 }else{
-                    dataNode* tmp;
+                    dataNode tmp;
                     file.write(reinterpret_cast<char *>(&tmp), blocksize);
                 }
             }
@@ -425,19 +427,18 @@ public:
     }
     void gettreefile(innerTreeNode &node,int pos){
         file.open(treefile, std::ios::in | std::ios::out);
-        checkfilesize(pos,true);
         file.seekg(sizeof(config)+pos*sizeof(innerTreeNode),std::ios::beg);
         file.read(reinterpret_cast<char *>(&node), sizeof(innerTreeNode));
         file.close();
     }
     void settreefile(innerTreeNode &node,int pos){
         file.open(treefile, std::ios::in | std::ios::out);
-        checkfilesize(pos,true);
         file.seekp(sizeof(config)+pos*sizeof(innerTreeNode),std::ios::beg);
         file.write(reinterpret_cast<char *>(&node), sizeof(innerTreeNode));
         file.close();
     }
     void buffergettreefile(innerTreeNode *&node,int pos){
+        std::unique_lock<std::shared_mutex >lck(iomutex_inner);
         if(treepos.find(pos)==treepos.end()){
             if(treevacantqueue.empty()){
                 // std::cerr<<"hhhhhhhhh"
@@ -525,7 +526,9 @@ public:
     // void buffergetconfig
     //
     
+    
     void buffergetdatafile(dataNode *&node,int pos){
+        std::unique_lock<std::shared_mutex >lck(iomutex_data);
         // std::cerr<<databufferqueue.size()<<"{}"<<pos<<"("<<'\n';
         if(datapos.find(pos)==datapos.end()){
             if(datavacantqueue.empty()){
@@ -656,6 +659,9 @@ public:
         // getconfig(Config);
         // innerTreeNode *nw;
         // buffergettreefile(nw,Config.root);
+        std::shared_lock<std::shared_mutex> configlck(configmutex);
+        std::shared_lock<std::shared_mutex>treelck(treeblockmutex[Config.root]);
+        // lck.unlock_shared();
         innernode_ptr nw(Config.root,this);
         int depth=0;
         while (!nw->isLeaf) {
@@ -663,7 +669,10 @@ public:
             while (i < nw->num-1 && key > nw->keys[i]) {
                 i++;
             }
+            std::shared_lock<std::shared_mutex>newtreelck(treeblockmutex[    nw->children[i]] );
             nw.get(nw->children[i]);
+            treelck=std::move(newtreelck);
+            if(configlck.owns_lock())configlck.unlock();
             // buffergettreefile(nw,nw->children[i]);
             depth++;
             
@@ -683,15 +692,16 @@ public:
         // std::cout<<"depth: "<<depth<<std::endl;
         // dataNode *datanw;
         // buffergetdatafile(datanw,nw->children[i]);
-        datanode_ptr datanw(nw->children[i],this);
+        std::shared_lock<std::shared_mutex>datalck(datablockmutex[    nw->children[i]] );
 
+        datanode_ptr datanw(nw->children[i],this);
+        
         int j = 0;
         while (j < datanw->num && key > datanw->keys[j]) {
             j++;
         }
         if(j<datanw->num&&key==datanw->keys[j]){
             value = datanw->values[j];
-            return true;
         }
         return false;
 
@@ -703,14 +713,19 @@ public:
         // getconfig(Config);
         // innerTreeNode* nw;
         // buffergettreefile(nw,Config.root);
+        std::shared_lock<std::shared_mutex> configlck(configmutex);
+        std::shared_lock<std::shared_mutex>treelck(treeblockmutex[Config.root]);
         innernode_ptr nw(Config.root,this);
-
         while (!nw->isLeaf) {
             int i = 0;
             while (i < nw->num-1 && lower_bound > nw->keys[i]) {
                 i++;
             }
-            buffergettreefile(nw,nw->children[i]);
+            // buffergettreefile(nw,nw->children[i]);
+            std::shared_lock<std::shared_mutex>newtreelck(treeblockmutex[    nw->children[i]] );
+            nw.get(nw->children[i]);
+            treelck=std::move(newtreelck);
+            if(configlck.owns_lock())configlck.unlock();
         }
         int i = 0;
         while (i < nw->num-1 && lower_bound > nw->keys[i]) {
@@ -718,6 +733,7 @@ public:
         }
         // dataNode* datanw;
         // buffergetdatafile(datanw,nw->children[i]);
+        std::shared_lock<std::shared_mutex>datalck(datablockmutex[    nw->children[i]] );
         datanode_ptr datanw(nw->children[i],this);
         int j = 0;
         while (j < datanw->num && lower_bound > datanw->keys[j]) {
@@ -730,7 +746,10 @@ public:
                 }
                 value.push_back(datanw->values[k]);
             }
-                datanw.get(datanw->next);
+            std::shared_lock<std::shared_mutex>newdatalck(datablockmutex[    datanw->next] );
+
+            datanw.get(datanw->next);
+            datalck=std::move(newdatalck);
             // buffergetdatafile(datanw,datanw->next);
             j=0;
         }
@@ -748,6 +767,20 @@ public:
         // getconfig(Config);
         // innerTreeNode* nw;
         // buffergettreefile(nw,Config.root);
+        //独自享有的map,完全安全
+        std::map<int,int>father;
+        int h=0,t=0;
+        bool have_root=true;
+        std::unique_lock<std::shared_mutex >treelck[20];
+        //首先，这个getfile没有加锁，并不是线程安全的，这将导致错误
+
+        //!!这里还有一个重大bug导致死锁:  我们要知道此时此刻的root是谁，所以我们需要一个锁
+        //然而，我们在这里加锁则后面有一个部分，我们另一个拥有root块的锁的线程需要这个修改root的锁
+        //但是双方各站资源互不相让，造成死锁
+        //因此，config必须要在跟释放后才能使释放
+        std::unique_lock<std::shared_mutex >configlck(configmutex);
+
+        treelck[t++]=std::unique_lock<std::shared_mutex>(treeblockmutex[Config.root]);
         innernode_ptr nw(Config.root,this);
         father[nw->id]=-1;
         // nw->print();
@@ -757,7 +790,15 @@ public:
                 i++;
             }
             father[nw->children[i]]=nw->id;
+            treelck[t++]=std::unique_lock<std::shared_mutex>(treeblockmutex[nw->children[i]]);
             nw.get(nw->children[i]);
+            if(nw->num<M){
+                while(h+1<t){
+                    treelck[h++].unlock();
+                }
+                if(h>0)have_root=false;
+                if(!have_root&&configlck.owns_lock())configlck.unlock();
+            }
             // buffergettreefile(nw,nw->children[i]);
         }
         int i = 0;
@@ -767,6 +808,7 @@ public:
         int place=nw->children[i];
         // dataNode* datanw;
         // buffergetdatafile(datanw,nw->children[i]);
+        std::unique_lock<std::shared_mutex >datalck(datablockmutex[    nw->children[i]] );
         datanode_ptr datanw(nw->children[i],this);
         
         int j = 0;
@@ -787,19 +829,22 @@ public:
         }
         // std::cerr<<"{{{{{}}}}}";
         // dataNode* newdatanw;
-        datanode_ptr    newdatanw(this);
+        std::unique_lock<std::shared_mutex >newdatalck;
+        datanode_ptr newdatanw(this);
+        configlck.try_lock();
         if(Config.vacantdatablock!=-1){
             // buffergetdatafile(newdatanw,Config.vacantdatablock);
+            newdatalck= std::unique_lock<std::shared_mutex>(datablockmutex[Config.vacantdatablock]);
             newdatanw.get(Config.vacantdatablock);
             assert(newdatanw->id==Config.vacantdatablock);
             Config.vacantdatablock=newdatanw->next;
         }else{
             // buffergetdatafile(newdatanw,++Config.datacnt);
-            newdatanw.get(++Config.datacnt);
+            newdatalck  = std::unique_lock<std::shared_mutex>(datablockmutex[++Config.datacnt]);
+            newdatanw.get(Config.datacnt);
             newdatanw->id=Config.datacnt;
         }
         newdatanw->num=0;
-        
 
         //可以加入内存回收策略
         for(int i=((L+1)>>1);i<datanw->num;i++){
@@ -822,6 +867,7 @@ public:
         }else{
             Config.dataend=newdatanw->id;
         }
+        if(!have_root)configlck.unlock();
         
         //data部分完成
         //开始更新树
@@ -841,20 +887,24 @@ public:
             if(nw->num<=M){
                 
                 // buffersettreefile(nw,nw->id);
-                flag=true;
                 break;
             }
 
             //innerTreeNode* newnw;
+            configlck.try_lock();
+            // std::unique_lock<std::shared_mutex >newtreelck;
+            //其实根本不用锁，因为这个点对其他线程是不可见的
             innernode_ptr newnw(this);
             if(Config.vacanttreeblock!=-1){
                 //buffergettreefile(newnw,Config.vacanttreeblock);
+                // newtreelck= std::unique_lock<std::shared_mutex>(treeblockmutex[Config.vacanttreeblock]);
                 newnw.get(Config.vacanttreeblock);
                 assert(newnw->id==Config.vacanttreeblock);
                 Config.vacanttreeblock=newnw->next;
             }else{
                 //buffergettreefile(newnw,++Config.treecnt);
-                newnw.get(++Config.treecnt);
+                // newtreelck= std::unique_lock<std::shared_mutex>(treeblockmutex[++Config.treecnt]);
+                newnw.get(Config.treecnt);
                 newnw->id=Config.treecnt;
             }
             newnw->isLeaf=nw->isLeaf;
@@ -871,8 +921,11 @@ public:
             //如果是新建的空间必须先写入，否则文件大小、读写头出问题
             // buffersettreefile(newnw,newnw->id);
             //innerTreeNode* parent;
+            // std::unique_lock<std::shared_mutex >parentlck;
+            //之前已经锁了，不必担心，否则会死锁
             innernode_ptr parent(this);
             if(father[nw->id]==-1){
+                //这个时候需要新建根节点，此时不需要锁，因为这时候只有这个进程在运行
                 if(Config.vacanttreeblock!=-1){
                     //buffergettreefile(parent,Config.vacanttreeblock);
                     parent.get(Config.vacanttreeblock);
@@ -902,17 +955,24 @@ public:
             childid=newnw->id;
             splitkey=nw->keys[((M+1)>>1)-1];
             nw=parent;//位置要对
+            if(!have_root)configlck.unlock();
         }
         // setconfig(Config);
     }
 
     // 删除关键字
     void remove(const key_t &key) {
-        
+        std::map<int,int>father;
+        int h=0,t=0;
+        bool have_root=true;
+        std::unique_lock<std::shared_mutex >treelck[20];
+        std::unique_lock<std::shared_mutex >configlck(configmutex);
+        treelck[t++]=std::unique_lock<std::shared_mutex>(treeblockmutex[Config.root]);
         // config Config;
         // getconfig(Config);
         // innerTreeNode* nw;
         // buffergettreefile(nw,Config.root);
+
         innernode_ptr nw(Config.root,this);
         father[nw->id]=-1;
         while (!nw->isLeaf) {
@@ -921,7 +981,15 @@ public:
                 i++;
             }
             father[nw->children[i]]=nw->id;
+            treelck[t++]=std::unique_lock<std::shared_mutex>(treeblockmutex[nw->children[i]]);
             nw.get(nw->children[i]);
+            if(nw->num >(M>>1)){
+                while(h+1<t){
+                    treelck[h++].unlock();
+                }
+                if(h>0) have_root=false;
+                if(!have_root&&configlck.owns_lock())configlck.unlock();
+            }
             // buffergettreefile(nw,nw->children[i]);
         }
         int i = 0;
@@ -930,6 +998,7 @@ public:
         }
         // dataNode* datanw;
         // buffergetdatafile(datanw,nw->children[i]);
+        std::unique_lock<std::shared_mutex >datalck(datablockmutex[    nw->children[i]] );
         datanode_ptr datanw(nw->children[i],this);
         
         int j = 0;
@@ -953,6 +1022,7 @@ public:
         if(place>0){
             // dataNode* prevdatanw;
             // buffergetdatafile(prevdatanw,datanw->prev);
+            std::unique_lock<std::shared_mutex >prevdatalck(datablockmutex[datanw->prev]);
             datanode_ptr prevdatanw(datanw->prev,this);
             // assert(datanw->prev==prevdatanw->id);
             // assert(nw->children[place-1]==prevdatanw->id);
@@ -975,6 +1045,7 @@ public:
         if(place<nw->num-1){
             // dataNode* nextdatanw;
             // buffergetdatafile(nextdatanw,datanw->next);
+            std::unique_lock<std::shared_mutex >nextdatalck(datablockmutex[datanw->next]);
             datanode_ptr nextdatanw(datanw->next,this);
             // assert(datanw->next==nextdatanw->id);
             // assert(nw->children[place+1]==nextdatanw->id);
@@ -994,11 +1065,13 @@ public:
                 return;
             }
         }
-        
         int removeid;
+        configlck.try_lock();
         if(place>0){
             // dataNode* prevdatanw;
             // buffergetdatafile(prevdatanw,datanw->prev);
+            std::unique_lock<std::shared_mutex >prevdatalck(datablockmutex[datanw->prev]);
+
             datanode_ptr prevdatanw(datanw->prev,this);
             for(int i=0;i<datanw->num;i++){
                 prevdatanw->keys[prevdatanw->num+i]=datanw->keys[i];
@@ -1022,6 +1095,7 @@ public:
         }else if(place<nw->num-1){
             // dataNode* nextdatanw;
             // buffergetdatafile(nextdatanw,datanw->next);
+            std::unique_lock<std::shared_mutex >nextdatalck(datablockmutex[datanw->next]);
             datanode_ptr nextdatanw(datanw->next,this);
             for(int i=0;i<nextdatanw->num;i++){
                 datanw->keys[datanw->num+i]=nextdatanw->keys[i];
@@ -1049,7 +1123,7 @@ public:
             // setconfig(Config);
             return;
         }
-        
+        if(!have_root)configlck.unlock();
         while(true){
             //不断向上合并直到不用再合并
             nw->keys[removeid-1]=nw->keys[removeid];//之前错了removeid是一个下标
@@ -1065,6 +1139,7 @@ public:
                 
             // innerTreeNode* parent;
             // buffergettreefile(parent,father[nw->id]);
+            //之前已经锁过了
             innernode_ptr parent(father[nw->id],this);
             // assert(parent->id==father[nw->id]);
             for(place=0;place<parent->num&&parent->children[place]!=nw->id;place++);
@@ -1072,6 +1147,7 @@ public:
             if(place>0){
                 // innerTreeNode* prevnw;
                 // buffergettreefile(prevnw,parent->children[place-1]);
+                std::unique_lock<std::shared_mutex >prevdatalck(datablockmutex[parent->children[place-1]]);
                 innernode_ptr prevnw(parent->children[place-1],this);
                 if(prevnw->num>(M>>1)){
                     for(int i=nw->num;i>0;i--){
@@ -1094,6 +1170,7 @@ public:
             if(place<parent->num-1){
                 // innerTreeNode* nextnw;
                 // buffergettreefile(nextnw,parent->children[place+1]);
+                std::unique_lock<std::shared_mutex >nextdatalck(datablockmutex[parent->children[place+1]]);
                 innernode_ptr nextnw(parent->children[place+1],this);
                 if(nextnw->num>(M>>1)){
 
@@ -1115,9 +1192,12 @@ public:
 
             }
             //合并
+            configlck.try_lock();
             if(place>0){
                 // innerTreeNode* prevnw;
                 // buffergettreefile(prevnw,parent->children[place-1]);
+                std::unique_lock<std::shared_mutex >prevdatalck(datablockmutex[parent->children[place-1]]);
+                
                 innernode_ptr prevnw(parent->children[place-1],this);
                 prevnw->keys[prevnw->num-1]=parent->keys[place-1];
                 for(int i=0;i<nw->num;i++){
@@ -1133,6 +1213,8 @@ public:
             }else if(place<parent->num-1){
                 // innerTreeNode* nextnw;
                 // buffergettreefile(nextnw,parent->children[place+1]);
+                std::unique_lock<std::shared_mutex >nextdatalck(datablockmutex[parent->children[place+1]]);
+
                 innernode_ptr nextnw(parent->children[place+1],this);
                 nw->keys[nw->num-1]=parent->keys[place];
                 for(int i=0;i<nextnw->num;i++){
@@ -1150,6 +1232,7 @@ public:
                 // buffersettreefile(nw, nw->id);
                 break;
             }
+            if(!have_root)configlck.unlock();
         }
 
         // setconfig(Config);
