@@ -23,16 +23,16 @@ unsigned long long hashh(const Mystring &s){
         // Mystring b(a);
         // a.c[1]='8';
         // cout<<a.tostr()<<' '<<b.tostr()<<'\n';
-        std::cerr<<"start\n";
+        // std::cerr<<"start\n";
         BPlusTree<sjtu::pair<unsigned long long, int>, int, 500, 500>A("datafile","treefile",false);
         int T;cin>>T;
-        cout<<T<<'\n';
+        // cout<<T<<'\n';
         while(T--){
             string s;string a;int b;
             cin>>s;
             if(s=="insert"){
                 cin>>a>>b;
-                cout<<a<<b;
+                // cout<<a<<b;
                 A.insert(sjtu::make_pair(hashh(Mystring(a)),b), b);
             }
             if(s=="delete"){
