@@ -4,15 +4,33 @@
 #include <condition_variable>
 #include <fstream>
 #include <iostream>
-#include <map>
+// #include <map>
 #include <mutex>
 #include <pthread.h>
-#include <vector>
+// #include <vector>
 #include <queue>
+#include "map.hpp"
+#include "vector.hpp"
 #include "utility.hpp"
 // #include "hashmap.hpp"
 
 // #define DEBUG
+namespace sjtu{
+
+template<class T>
+int mylowerbound(T *a,int n,const T &x){
+    int l=0,r=n-1,res=n;
+    while(l<=r){
+        int mid=(l+r)>>1;
+        if(a[mid]>=x){
+            res=mid;
+            r=mid-1;
+        }else{
+            l=mid+1;
+        }
+    }
+    return res;
+}
 template <class key_t,class val_t,int M,int L>
 class BPlusTree {
 #ifdef DEBUG
@@ -88,6 +106,7 @@ public:
     
     class config{
     public:
+        int size;
         int root;
         int datahead;
         int dataend;
@@ -97,6 +116,7 @@ public:
         int datacnt=0;
         int treecnt=0;
         config(){
+            size=0;
             root = 0;
             datahead = 0;
             dataend = 0;
@@ -117,37 +137,41 @@ public:
     static const int buffersize=5;
     innerTreeNode treebuffer[buffersize];
     dataNode databuffer[buffersize];
-    std::priority_queue<std::pair<int,int>>treebufferqueue;
-    std::priority_queue<std::pair<int,int>>databufferqueue;
-    std::priority_queue<std::pair<int,int>>treevacantqueue;
-    std::priority_queue<std::pair<int,int>>datavacantqueue;
+    std::priority_queue<sjtu::pair<int,int>>treebufferqueue;
+    std::priority_queue<sjtu::pair<int,int>>databufferqueue;
+    std::priority_queue<sjtu::pair<int,int>>treevacantqueue;
+    std::priority_queue<sjtu::pair<int,int>>datavacantqueue;
     
 
 
-    std::map<int,int>treepos;
-    std::map<int,int>datapos;
+    sjtu::map<int,int>treepos;
+    sjtu::map<int,int>datapos;
 
-    std::map<int,int>treetime;
-    std::map<int,int>datatime;
+    sjtu::map<int,int>treetime;
+    sjtu::map<int,int>datatime;
     //缓存系统
 
     
     
-    std::map<int,int > father;
+    sjtu::map<int,int > father;
     int time_stamp=0;
     //并发系统
-    static const int MAXtreeblocknum=10000;
-    static const int MAXdatablocknum=10000;
+    static const int MAXtreeblocknum=100;
+    static const int MAXdatablocknum=100;
     std::mutex treeblockmutex[MAXtreeblocknum];
     std::mutex datablockmutex[MAXdatablocknum];
     std::mutex reusemutex;
     std::condition_variable treeblockcv[MAXtreeblocknum];
     std::condition_variable datablockcv[MAXdatablocknum];
     #ifdef DEBUG
-    std::map<int,int>test;
-    std::map<int,int>testm;
+    sjtu::map<int,int>test;
+    sjtu::map<int,int>testm;
     #endif    
 public:
+    int size()const
+    {
+        return Config.size;
+    }
     #ifdef DEBUG
     void printconfig(){
         // config Config;
@@ -159,7 +183,7 @@ public:
         std::cerr<<"treecnt: "<<Config.treecnt<<std::endl;
     }
     #endif
-    void getallelement(std::vector<key_t>&key,std::vector<val_t>&value){
+    void getallelement(sjtu::vector<key_t>&key,sjtu::vector<val_t>&value){
         key.clear();
         value.clear();
         // config Config;
@@ -327,7 +351,7 @@ public:
         }
     }
     #endif
-    BPlusTree(std::string datafile,std::string treefile,bool isnew=false):datafile(datafile),treefile(treefile){
+    BPlusTree(std::string filename,bool isnew=false):datafile(filename+"_data"),treefile(filename+"_tree"){
         time_stamp=0;
         treepos.clear();
         datapos.clear();
@@ -336,8 +360,8 @@ public:
         while(treevacantqueue.size())treevacantqueue.pop();
         while(datavacantqueue.size())datavacantqueue.pop();
         for(int i=0;i<buffersize;i++){
-            treevacantqueue.push(std::make_pair(0,i));
-            datavacantqueue.push(std::make_pair(0,i));
+            treevacantqueue.push(sjtu::make_pair(0,i));
+            datavacantqueue.push(sjtu::make_pair(0,i));
         }      
         for(int i=0;i<buffersize;i++){
             treebuffer[i].id=-1;
@@ -450,12 +474,12 @@ public:
                     int ppos=treepos[p];
                     if(treebufferqueue.top().first!=-treetime[p]){
                         treebufferqueue.pop();
-                        treebufferqueue.push(std::make_pair(-treetime[p],p));
+                        treebufferqueue.push(sjtu::make_pair(-treetime[p],p));
                         continue;
                     }
                     treetime.erase(p);
                     treebufferqueue.pop();
-                    treevacantqueue.push(std::make_pair(0,ppos));
+                    treevacantqueue.push(sjtu::make_pair(0,ppos));
                     //vacant中的是树位置
                     if(treebuffer[ppos].id!=p)std::cerr<<"hkj";
                     assert(treebuffer[ppos].id==p);
@@ -467,7 +491,7 @@ public:
             int ppos=treevacantqueue.top().second;
             treevacantqueue.pop();
             treepos[pos]=ppos;
-            treebufferqueue.push(std::make_pair(-(treetime[pos]=++time_stamp),pos));
+            treebufferqueue.push(sjtu::make_pair(-(treetime[pos]=++time_stamp),pos));
             //注记：大根堆
             gettreefile(treebuffer[ppos],pos);
             node=treebuffer+ppos;
@@ -535,12 +559,12 @@ public:
                     int ppos=datapos[p];
                     if(databufferqueue.top().first!=-datatime[p]){
                         databufferqueue.pop();
-                        databufferqueue.push(std::make_pair(-datatime[p],p));
+                        databufferqueue.push(sjtu::make_pair(-datatime[p],p));
                         continue;
                     }
                     datatime.erase(p);
                     databufferqueue.pop();
-                    datavacantqueue.push(std::make_pair(0,ppos));
+                    datavacantqueue.push(sjtu::make_pair(0,ppos));
                     if(databuffer[ppos].id!=p)std::cerr<<"hkj";
                     assert(databuffer[ppos].id==p);
                     setdatafile(databuffer[ppos], p);
@@ -551,7 +575,7 @@ public:
             int ppos=datavacantqueue.top().second;
             datavacantqueue.pop();
             datapos[pos]=ppos;
-            databufferqueue.push(std::make_pair(-(datatime[pos]=++time_stamp),pos));
+            databufferqueue.push(sjtu::make_pair(-(datatime[pos]=++time_stamp),pos));
             getdatafile(databuffer[ppos],pos);
             node=databuffer+ppos;
         }else{
@@ -595,7 +619,7 @@ public:
         BPlusTree *tree;
     public:
         innernode_ptr(BPlusTree*tree):  tree(tree){}
-        innernode_ptr(int id,BPlusTree*tree):id(id),innernode(nullptr),tree( tree){}
+        innernode_ptr(const int &id,BPlusTree*tree):id(id),innernode(nullptr),tree( tree){}
         innernode_ptr(const innernode_ptr &other):id(other.id),innernode(other.innernode),tree(other.tree){}
         innernode_ptr& operator =(const innernode_ptr &other){
             if(this==&other)return *this;
@@ -625,7 +649,7 @@ public:
         BPlusTree *tree;
     public: 
         datanode_ptr(BPlusTree*tree):  tree(tree){}
-        datanode_ptr(int id,BPlusTree*tree):id(id),datanode(nullptr),tree( tree){}
+        datanode_ptr(const int &id,BPlusTree*tree):id(id),datanode(nullptr),tree( tree){}
         datanode_ptr(const datanode_ptr &other):id(other.id),datanode(other.datanode),tree(other.tree){}
         datanode_ptr& operator =(const datanode_ptr &other){
             if(this==&other)return *this;
@@ -660,9 +684,10 @@ public:
         int depth=0;
         while (!nw->isLeaf) {
             int i = 0;
-            while (i < nw->num-1 && key > nw->keys[i]) {
-                i++;
-            }
+            // while (i < nw->num-1 && key > nw->keys[i]) {
+            //     i++;
+            // }
+            i=mylowerbound( nw->keys,nw->num-1,key);;
             nw.get(nw->children[i]);
             // buffergettreefile(nw,nw->children[i]);
             depth++;
@@ -676,9 +701,10 @@ public:
             // }
         }
         int i = 0;
-        while (i < nw->num-1 && key > nw->keys[i]) {
-            i++;
-        }
+        // while (i < nw->num-1 && key > nw->keys[i]) {
+        //     i++;
+        // }
+        i=mylowerbound(nw->keys,nw->num-1,key);
         depth++;
         // std::cout<<"depth: "<<depth<<std::endl;
         // dataNode *datanw;
@@ -686,9 +712,10 @@ public:
         datanode_ptr datanw(nw->children[i],this);
 
         int j = 0;
-        while (j < datanw->num && key > datanw->keys[j]) {
-            j++;
-        }
+        // while (j < datanw->num && key > datanw->keys[j]) {
+        //     j++;
+        // }
+        j=mylowerbound(datanw->keys,datanw->num,key);
         if(j<datanw->num&&key==datanw->keys[j]){
             value = datanw->values[j];
             return true;
@@ -696,7 +723,79 @@ public:
         return false;
 
     }
-    void searchall(const key_t &lower_bound,const key_t upper_bound,std::vector<val_t> &value)
+    bool lower_bound(   const key_t &key,val_t &value){
+        // config Config;
+        // getconfig(Config);
+        // innerTreeNode *nw;
+        // buffergettreefile(nw,Config.root);
+        innernode_ptr nw(Config.root,this);
+        while (!nw->isLeaf) {
+            int i = 0;
+            // while (i < nw->num-1 && key > nw->keys[i]) {
+            //     i++;
+            // }
+            i=mylowerbound(nw->keys,nw->num-1,key);
+            nw.get(nw->children[i]);
+            // buffergettreefile(nw,nw->children[i]);
+        }
+        int i = 0;
+        while (i < nw->num-1 && key > nw->keys[i]) {
+            i++;
+        }
+        // dataNode *datanw;
+        // buffergetdatafile(datanw,nw->children[i]);
+        datanode_ptr datanw(nw->children[i],this);
+        int j = 0;
+        while (j < datanw->num && key > datanw->keys[j]) {
+            j++;
+        }
+        if(j<datanw->num){
+            value = datanw->values[j];
+            return true;
+        }
+        if(datanw->next==Config.dataend){
+            return false;
+        }
+        datanw.get(datanw->next);
+        assert(datanw->num>0);
+        value=datanw->values[0];
+        return true;
+    }
+    bool modify(    const key_t &key,const val_t &value){
+        // config Config;
+        // getconfig(Config);
+        // innerTreeNode *nw;
+        // buffergettreefile(nw,Config.root);
+        innernode_ptr nw(Config.root,this);
+        while (!nw->isLeaf) {
+            int i = 0;
+            // while (i < nw->num-1 && key > nw->keys[i]) {
+            //     i++;
+            // }
+            i=mylowerbound(nw->keys,nw->num-1,key);
+            nw.get(nw->children[i]);
+            // buffergettreefile(nw,nw->children[i]);
+        }
+        int i = 0;
+        while (i < nw->num-1 && key > nw->keys[i]) {
+            i++;
+        }
+        // dataNode *datanw;
+        // buffergetdatafile(datanw,nw->children[i]);
+        datanode_ptr datanw(nw->children[i],this);
+        int j = 0;
+        // while (j < datanw->num && key > datanw->keys[j]) {
+        //     j++;
+        // }
+        j=mylowerbound(datanw->keys,datanw->num,key);
+        if(j<datanw->num&&key==datanw->keys[j]){
+            datanw->values[j]=value;
+            // buffersetdatafile(datanw,datanw->id);
+            return true;
+        }
+        return false;
+    }
+    void searchall(const key_t &lower_bound,const key_t upper_bound,sjtu::vector<val_t> &value)
     {
         value.clear();
         // config Config;
@@ -707,23 +806,26 @@ public:
 
         while (!nw->isLeaf) {
             int i = 0;
-            while (i < nw->num-1 && lower_bound > nw->keys[i]) {
-                i++;
-            }
+            // while (i < nw->num-1 && lower_bound > nw->keys[i]) {
+            //     i++;
+            // }
+            i=mylowerbound(nw->keys,nw->num-1,lower_bound);
             nw.get(nw->children[i]);
             // buffergettreefile(nw,nw->children[i]);
         }
         int i = 0;
-        while (i < nw->num-1 && lower_bound > nw->keys[i]) {
-            i++;
-        }
+        // while (i < nw->num-1 && lower_bound > nw->keys[i]) {
+        //     i++;
+        // }
+        i=mylowerbound(nw->keys,nw->num-1,lower_bound);
         // dataNode* datanw;
         // buffergetdatafile(datanw,nw->children[i]);
         datanode_ptr datanw(nw->children[i],this);
         int j = 0;
-        while (j < datanw->num && lower_bound > datanw->keys[j]) {
-            j++;
-        }
+        // while (j < datanw->num && lower_bound > datanw->keys[j]) {
+        //     j++;
+        // }
+        j=mylowerbound(datanw->keys,datanw->num,lower_bound);
         while(datanw->id!=Config.dataend){
             for(int k=j;k<datanw->num;k++){
                 if(datanw->keys[k]>upper_bound){
@@ -744,35 +846,42 @@ public:
         }
     }
     // 插入关键字
-    void insert(const key_t &key,const val_t &value) {
+    bool insert(const key_t &key,const val_t &value) {
         // config Config;
         // getconfig(Config);
         // innerTreeNode* nw;
         // buffergettreefile(nw,Config.root);
         innernode_ptr nw(Config.root,this);
+        Config.size++;
         father[nw->id]=-1;
         // nw->print();
         while (!nw->isLeaf) {
             int i = 0;
-            while (i < nw->num-1 && key > nw->keys[i]) {
-                i++;
-            }
+            // while (i < nw->num-1 && key > nw->keys[i]) {
+            //     i++;
+            // }
+            i=mylowerbound(nw->keys,nw->num-1,key);
             father[nw->children[i]]=nw->id;
             nw.get(nw->children[i]);
             // buffergettreefile(nw,nw->children[i]);
         }
         int i = 0;
-        while (i < nw->num-1 && key > nw->keys[i]) {
-            i++;
-        }
+        // while (i < nw->num-1 && key > nw->keys[i]) {
+        //     i++;
+        // }
+        i=mylowerbound(nw->keys,nw->num-1,key);
         int place=nw->children[i];
         // dataNode* datanw;
         // buffergetdatafile(datanw,nw->children[i]);
         datanode_ptr datanw(nw->children[i],this);
         
         int j = 0;
-        while (j < datanw->num && key > datanw->keys[j]) {
-            j++;
+        // while (j < datanw->num && key > datanw->keys[j]) {
+        //     j++;
+        // }
+        j=mylowerbound(datanw->keys,datanw->num,key);
+        if(j<datanw->num&&key==datanw->keys[j]){
+            return false;
         }
         
         for(int k=datanw->num;k>j;k--){
@@ -784,7 +893,7 @@ public:
         datanw->num++;
         if(datanw->num<=L){
             // buffersetdatafile(datanw,datanw->id);
-            return;
+            return true;
         }
         // std::cerr<<"{{{{{}}}}}";
         // dataNode* newdatanw;
@@ -904,41 +1013,46 @@ public:
             splitkey=nw->keys[((M+1)>>1)-1];
             nw=parent;//位置要对
         }
+        return true;
         // setconfig(Config);
     }
 
     // 删除关键字
-    void remove(const key_t &key) {
+    bool remove(const key_t &key) {
         
         // config Config;
         // getconfig(Config);
         // innerTreeNode* nw;
         // buffergettreefile(nw,Config.root);
         innernode_ptr nw(Config.root,this);
+        Config.size--;
         father[nw->id]=-1;
         while (!nw->isLeaf) {
             int i = 0;
-            while (i < nw->num-1 && key > nw->keys[i]) {
-                i++;
-            }
+            // while (i < nw->num-1 && key > nw->keys[i]) {
+            //     i++;
+            // }
+            i=mylowerbound(nw->keys,nw->num-1,key);
             father[nw->children[i]]=nw->id;
             nw.get(nw->children[i]);
             // buffergettreefile(nw,nw->children[i]);
         }
         int i = 0;
-        while (i < nw->num-1 && key > nw->keys[i]) {
-            i++;
-        }
+        // while (i < nw->num-1 && key > nw->keys[i]) {
+        //     i++;
+        // }
+        i=mylowerbound(nw->keys,nw->num-1,key);
         // dataNode* datanw;
         // buffergetdatafile(datanw,nw->children[i]);
         datanode_ptr datanw(nw->children[i],this);
         
         int j = 0;
-        while (j < datanw->num && key > datanw->keys[j]) {
-            j++;
-        }
+        // while (j < datanw->num && key > datanw->keys[j]) {
+        //     j++;
+        // }
+        j=mylowerbound(datanw->keys,datanw->num,key);
         if(j>=datanw->num||key!=datanw->keys[j]){
-            return;
+            return false;
         }
         for(int k=j;k<datanw->num-1;k++){
             datanw->keys[k]=datanw->keys[k+1];
@@ -947,7 +1061,7 @@ public:
         datanw->num--;
         if(datanw->num>=(L>>1)){
             // buffersetdatafile(datanw,datanw->id);
-            return;
+            return true;
         }
         //借用节点
         int place=i;
@@ -970,7 +1084,7 @@ public:
                 // buffersetdatafile(prevdatanw,prevdatanw->id);
                 nw->keys[place-1]=prevdatanw->keys[prevdatanw->num-1];
                 // buffersettreefile(nw,nw->id);
-                return;
+                return true;
             }
         }
         if(place<nw->num-1){
@@ -992,7 +1106,7 @@ public:
                 // buffersetdatafile(nextdatanw,nextdatanw->id);
                 nw->keys[place]=datanw->keys[datanw->num-1];
                 // buffersettreefile(nw,nw->id);
-                return;
+                return true;
             }
         }
         
@@ -1048,7 +1162,7 @@ public:
             //不可能(除非删光了)
             // buffersetdatafile(datanw, datanw->id);
             // setconfig(Config);
-            return;
+            return true;
         }
         
         while(true){
@@ -1152,8 +1266,42 @@ public:
                 break;
             }
         }
-
+        return true;
         // setconfig(Config);
+    }
+    void clear()
+    {
+        time_stamp=0;
+        treepos.clear();
+        datapos.clear();
+        while(treebufferqueue.size())treebufferqueue.pop();
+        while(databufferqueue.size())databufferqueue.pop();  
+        while(treevacantqueue.size())treevacantqueue.pop();
+        while(datavacantqueue.size())datavacantqueue.pop();
+        for(int i=0;i<buffersize;i++){
+            treevacantqueue.push(sjtu::make_pair(0,i));
+            datavacantqueue.push(sjtu::make_pair(0,i));
+        }      
+        for(int i=0;i<buffersize;i++){
+            treebuffer[i].id=-1;
+            databuffer[i].id=-1;
+        }
+        Config=config();
+        // setconfig(Config);
+        file.open(treefile, std::ios::out);
+        file.write(reinterpret_cast<char *>(&Config), sizeof(config));
+        innerTreeNode headtreenode(true);
+        headtreenode.num=1;
+        headtreenode.children[0]=0;
+        file.write(reinterpret_cast<char *>(&headtreenode), sizeof(innerTreeNode));
+        file.close();
+
+
+        file.open(datafile, std::ios::out);
+        dataNode headdatanode;
+        headdatanode.num=0;
+        file.write(reinterpret_cast<char *>(&headdatanode), sizeof(dataNode));
+        file.close();
     }
 
     
@@ -1161,4 +1309,5 @@ public:
     // 查找关键字
     
 };
+}
 #endif

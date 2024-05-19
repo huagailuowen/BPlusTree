@@ -5,9 +5,9 @@
 using std::string;
 
 struct Mystring{
-#ifdef DEBUG
-private:
-#endif
+// #ifdef DEBUG
+// private:
+// #endif
     char c[65];int l=0;
 public:
     Mystring()

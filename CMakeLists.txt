@@ -2,4 +2,5 @@
 project(MyProject)
 add_compile_options(-Wall -Wextra -Wpedantic)
 # Add the executable
-add_executable(MyProject test.cpp)
+set(CMAKE_CXX_STANDARD 20)
+add_executable(MyProject code.cpp)
