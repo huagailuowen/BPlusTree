@@ -1,10 +1,10 @@
-#include "src/save_work(right but not concurent).hpp"
+#include "src/testBPlusTree.hpp"
 #include "./src/Mystring.hpp"
 // #include "./src/vector.hpp"
 #include <iostream>
 #include <string>
 #include <cstring>
-
+int TIME=0;
 unsigned long long hashh(const Mystring &s){
     unsigned long long res=0;
     for(int i=0;s.c[i];i++){
@@ -24,7 +24,7 @@ unsigned long long hashh(const Mystring &s){
         // a.c[1]='8';
         // cout<<a.tostr()<<' '<<b.tostr()<<'\n';
         // std::cerr<<"start\n";
-        BPlusTree<sjtu::pair<unsigned long long, int>, int, 500, 500>A("datafile","treefile",false);
+        sjtu::BPlusTree<sjtu::pair<unsigned long long, int>, int, 4, 4>A("bptfile",false);
         int T;cin>>T;
         // cout<<T<<'\n';
         while(T--){
@@ -41,7 +41,7 @@ unsigned long long hashh(const Mystring &s){
             }
             if(s=="find"){
                 cin>>a;//cout<<"|||";
-                vector<int>v;
+                sjtu::vector<int>v;
                 A.searchall(sjtu::make_pair(hashh(Mystring(a)), 0), sjtu::make_pair(hashh(Mystring(a)), 1000000),v);
                 if(v.empty())cout<<"null";
                 else{
