@@ -24,7 +24,7 @@ unsigned long long hashh(const Mystring &s){
         // a.c[1]='8';
         // cout<<a.tostr()<<' '<<b.tostr()<<'\n';
         // std::cerr<<"start\n";
-        sjtu::BPlusTree<sjtu::pair<unsigned long long, int>, int, 4, 4>A("bptfile",false);
+        sjtu::BPlusTree<sjtu::pair<unsigned long long, int>, int, 50, 50>A("bptfile",false);
         int T;cin>>T;
         // cout<<T<<'\n';
         while(T--){
